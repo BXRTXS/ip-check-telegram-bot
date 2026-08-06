@@ -68,6 +68,8 @@ def admin_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("📊 Последние проверки", callback_data="adm:audit:0")],
             [InlineKeyboardButton("📈 Сводка по пользователям", callback_data="adm:stats")],
             [InlineKeyboardButton("⚙️ Лимиты и таймауты", callback_data="adm:limits")],
+            [InlineKeyboardButton("🩺 Health", callback_data="adm:health")],
+            [InlineKeyboardButton("🗑 Очистить кэш lookups", callback_data="adm:cache_clear")],
         ]
     )
 
