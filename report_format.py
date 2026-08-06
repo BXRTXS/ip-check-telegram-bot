@@ -443,9 +443,15 @@ def build_detail_attachment_text(
     return "\n".join(out)
 
 
-def bulk_row_is_red(g: GeoData, vt: VTData, otx: OTXData) -> bool:
+def bulk_row_is_red(
+    g: GeoData,
+    vt: VTData,
+    otx: OTXData,
+    *,
+    abuse: AbuseIPDBData | None = None,
+) -> bool:
     """Красная зона для кнопки точечной проверки после массового режима."""
-    score, verdict, _ = _risk_heuristic(g, vt, otx, abuse=None)
+    score, verdict, _ = _risk_heuristic(g, vt, otx, abuse=abuse)
     if score >= 45 or "🔴" in verdict:
         return True
     if vt.ok and vt.malicious >= 1:
@@ -453,6 +459,8 @@ def bulk_row_is_red(g: GeoData, vt: VTData, otx: OTXData) -> bool:
     if vt.ok and vt.suspicious >= 8:
         return True
     if otx.ok and otx.pulse_count >= 12:
+        return True
+    if abuse and abuse.ok and abuse.abuse_confidence_score >= 50:
         return True
     return False
 
