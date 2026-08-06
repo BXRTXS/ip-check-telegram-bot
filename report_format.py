@@ -524,7 +524,7 @@ def format_detailed_html(
     )
     lines.extend(_hosts_html_lines(ip, hosts, show_max=hosts_show_max))
 
-    lines.extend(["", "🛡 <b>VirusTotal</b>"])
+    lines.extend(["", f"🛡 <b>VirusTotal</b> <i>(окно {vt.window_days if vt.ok else 30} дн.)</i>"])
     if not vt.ok:
         lines.append(f"• {h(vt.error or 'недоступно')}")
     else:
@@ -534,16 +534,29 @@ def format_detailed_html(
         )
         if vt.reputation is not None:
             lines.append(f"• Reputation: <b>{vt.reputation}</b>")
+        if vt.analysis_age_days is not None:
+            lines.append(f"• Возраст last_analysis: <b>{vt.analysis_age_days}</b> дн.")
+        if vt.stale:
+            lines.append(
+                f"• <i>Анализ старше {vt.window_days} дн. — malicious/suspicious обнулены</i>"
+            )
     lines.append(
         f'• <a href="https://www.virustotal.com/gui/ip-address/{h(ip)}">Страница VT</a> · '
         f'<a href="https://www.virustotal.com/api/v3/ip_addresses/{h(ip)}">REST (нужен ключ)</a>'
     )
 
-    lines.extend(["", "🦠 <b>AlienVault OTX</b>"])
+    lines.extend(["", f"🦠 <b>AlienVault OTX</b> <i>(окно {otx.window_days if otx.ok else 30} дн.)</i>"])
     if not otx.ok:
         lines.append(f"• {h(otx.error or 'недоступно')}")
     else:
-        lines.append(f"• Pulses: <b>{otx.pulse_count}</b>")
+        lines.append(
+            f"• Pulses за <b>{otx.window_days}</b> дн.: <b>{otx.pulse_count}</b>"
+            + (
+                f" <i>(всего в OTX: {otx.pulse_count_total})</i>"
+                if otx.pulse_count_total and otx.pulse_count_total != otx.pulse_count
+                else ""
+            )
+        )
         for n in otx.sample_names[:8]:
             lines.append(f"  — {h(n)}")
     lines.append(
@@ -552,7 +565,7 @@ def format_detailed_html(
     )
 
     if abuse is not None:
-        lines.extend(["", "🚨 <b>AbuseIPDB</b> <i>(только точечная проверка)</i>"])
+        lines.extend(["", "🚨 <b>AbuseIPDB</b>"])
         if not abuse.ok:
             lines.append(f"• {h(abuse.error or 'недоступно')}")
         else:
