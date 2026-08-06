@@ -814,10 +814,10 @@ async def _send_dump_report(
         )
         if batch:
             extra = ""
-            if report.src_enrichment:
+            if report.src_enrichment or report.dst_enrichment:
                 extra = (
-                    "\n<i>Src IP уже в отчёте (подсети + AS).</i> "
-                    "Кнопка — повтор или Dst:"
+                    "\n<i>Src/Dst уже в отчёте (подсети + AS).</i> "
+                    "Кнопки — повтор, топ /24:"
                 )
             await update.effective_message.reply_html(
                 "<b>Доп. проверка IP из дампа</b> (массовый режим):"
