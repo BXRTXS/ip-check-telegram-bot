@@ -794,13 +794,14 @@ async def on_nocache_last(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     q = update.callback_query
     if not q:
         return
-    await q.answer("Перепроверяю без кэша…")
     if await _reject_if_denied(update, context):
+        await q.answer()
         return
     ips = context.user_data.get("last_check_ips") or []
     if not ips:
         await q.answer("Нет предыдущей проверки", show_alert=True)
         return
+    await q.answer("Перепроверяю без кэша…")
     text = "\n".join(ips)
     await _process_ips_message(
         update, context, text, source="callback_nocache", use_cache=False
