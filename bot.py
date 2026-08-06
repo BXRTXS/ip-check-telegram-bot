@@ -452,6 +452,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /settings — вкл/выкл geo, VT, OTX, AbuseIPDB, RIPEstat",
         "• 1 IP — детальный отчёт + .txt; N IP — bulk + CSV",
         "• После bulk: 🔴 точечно, 🔄 без кэша",
+        "• В детальном отчёте: 🚨 пожаловаться в AbuseIPDB (DDoS)",
     ]
     if _is_admin(update, context):
         lines.extend(
