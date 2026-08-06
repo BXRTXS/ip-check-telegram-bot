@@ -18,6 +18,7 @@ class BulkIpRow:
     vt: VTData
     otx: OTXData
     is_red: bool
+    abuse_score: int | None = None  # None — Abuse не запрашивали; иначе score 0–100
 
 
 @dataclass
