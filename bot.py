@@ -564,9 +564,36 @@ async def _process_ips_message(
     text: str,
     *,
     source: str = "text",
+    use_cache: bool = True,
 ) -> None:
     if await _reject_if_denied(update, context):
         return
+    uid = update.effective_user.id if update.effective_user else None
+    if uid is None:
+        return
+
+    locks: dict = context.application.bot_data.setdefault("user_locks", {})
+    lock: asyncio.Lock = locks.setdefault(uid, asyncio.Lock())
+    if lock.locked():
+        await update.effective_message.reply_html(
+            "⏳ Уже идёт проверка. Дождитесь окончания или попробуйте позже."
+        )
+        return
+
+    async with lock:
+        await _process_ips_message_locked(
+            update, context, text, source=source, use_cache=use_cache
+        )
+
+
+async def _process_ips_message_locked(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    *,
+    source: str = "text",
+    use_cache: bool = True,
+) -> None:
     limit = _max_ips()
     ips_direct = extract_ipv4s(text, limit=limit)
     domains = extract_domains(text, limit=limit)
@@ -652,12 +679,29 @@ async def _process_ips_message(
     intro = f"Проверяю <b>{len(ips)}</b> адресов"
     if domains:
         intro += f" (из {len(domains)} домен(ов))"
+    if not use_cache:
+        intro += " <i>без кэша</i>"
     intro += f" — <i>{h(mode)}</i>…"
     cache = context.application.bot_data.get("lookup_cache")
     status = await update.effective_message.reply_html(intro)
+
+    async def on_progress(done: int, total: int) -> None:
+        try:
+            await status.edit_text(
+                f"Проверяю… <b>{done}/{total}</b>",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
+
     try:
-        blocks, red_ips, att, n_cached = await run_lookups_for_ips(
-            proxy, ips, flags, cache=cache
+        blocks, red_ips, att, n_cached, bulk_rows = await run_lookups_for_ips(
+            proxy,
+            ips,
+            flags,
+            cache=cache,
+            use_cache=use_cache,
+            on_progress=on_progress if len(ips) > 1 else None,
         )
     except Exception as e:
         log.exception("lookups failed")
@@ -667,7 +711,7 @@ async def _process_ips_message(
         )
         return
 
-    if n_cached:
+    if n_cached and use_cache:
         ttl = get_limits().lookup_cache_ttl_hours
         cache_note = f"\n<i>📦 {n_cached} IP из кэша (TTL {ttl} ч), без повторных API-запросов</i>"
     else:
@@ -679,6 +723,8 @@ async def _process_ips_message(
         mode = "detail" if len(ips) == 1 else "bulk"
         if domains:
             mode = f"{mode}+domains"
+        if not use_cache:
+            mode = f"{mode}+nocache"
         _record_activity(update, context, action=mode)
         _audit_log(context).append(
             user_id=u.id,
@@ -698,14 +744,24 @@ async def _process_ips_message(
             chunks[-1]
             + f"\n\n<i>Кнопки — первые {mx} из {len(red_ips)} 🔴; остальные пришлите текстом.</i>"
         )
-    kb_last = _red_detail_keyboard(red_ips) if bulk else None
+
+    context.user_data["last_check_ips"] = ips
+    kb_rows: list[list[InlineKeyboardButton]] = []
+    if bulk and red_ips:
+        red_kb = _red_detail_keyboard(red_ips)
+        if red_kb:
+            kb_rows.extend(red_kb.inline_keyboard)
+    kb_rows.append(
+        [InlineKeyboardButton("🔄 Перепроверить без кэша", callback_data="nocache:last")]
+    )
+    kb_last = InlineKeyboardMarkup(kb_rows)
 
     first = header + chunks[0]
     await status.edit_text(
         first,
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
-        reply_markup=kb_last if bulk and len(chunks) == 1 else None,
+        reply_markup=kb_last if len(chunks) == 1 else None,
     )
     if len(chunks) > 1:
         for ch in chunks[1:-1]:
@@ -721,6 +777,34 @@ async def _process_ips_message(
             document=InputFile(BytesIO(att.encode("utf-8")), filename=fn),
             caption="Полный дамп без обрезки (все поля и списки).",
         )
+    if bulk and bulk_rows:
+        from report_format import bulk_rows_to_csv
+
+        csv_body = bulk_rows_to_csv(bulk_rows)
+        await update.effective_message.reply_document(
+            document=InputFile(
+                BytesIO(csv_body.encode("utf-8")),
+                filename="ip_check_bulk.csv",
+            ),
+            caption="CSV экспорт массовой проверки.",
+        )
+
+
+async def on_nocache_last(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    q = update.callback_query
+    if not q:
+        return
+    await q.answer("Перепроверяю без кэша…")
+    if await _reject_if_denied(update, context):
+        return
+    ips = context.user_data.get("last_check_ips") or []
+    if not ips:
+        await q.answer("Нет предыдущей проверки", show_alert=True)
+        return
+    text = "\n".join(ips)
+    await _process_ips_message(
+        update, context, text, source="callback_nocache", use_cache=False
+    )
 
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
