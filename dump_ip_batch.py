@@ -29,7 +29,43 @@ class DumpIpBatch:
     created_at: float
 
     def ips_for(self, which: DumpWhich) -> list[str]:
-        return self.src_ips if which == "src" else self.dst_ips
+        if which == "src":
+            return self.src_ips
+        if which == "dst":
+            return self.dst_ips
+        if which == "src24":
+            return slash24_top_ips(self.src_ips)
+        if which == "dst24":
+            return slash24_top_ips(self.dst_ips)
+        return []
+
+
+def slash24_top_ips(ips: list[str], *, max_nets: int = 12, max_ips: int | None = None) -> list[str]:
+    """Топ /24 по порядку списка (уже отсортирован по drop) → IP для bulk."""
+    if max_ips is None:
+        from runtime_config import get_limits
+
+        max_ips = get_limits().max_ips_per_request
+    seen_nets: list[str] = []
+    net_ips: dict[str, list[str]] = {}
+    for ip in ips:
+        try:
+            net = str(IPv4Network(f"{ip}/24", strict=False))
+        except ValueError:
+            continue
+        if net not in net_ips:
+            if len(seen_nets) >= max_nets:
+                continue
+            seen_nets.append(net)
+            net_ips[net] = []
+        net_ips[net].append(ip)
+    out: list[str] = []
+    for net in seen_nets:
+        for ip in net_ips[net]:
+            out.append(ip)
+            if len(out) >= max_ips:
+                return out
+    return out
 
 
 def ips_from_stats(stats: list[IpBlockStats]) -> list[str]:
