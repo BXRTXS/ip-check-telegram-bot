@@ -113,7 +113,9 @@ def _format_subnet_block(
 def _format_single_row(row: BulkIpRow, smap: dict[str, IpBlockStats], *, html: bool) -> str:
     from report_format import format_bulk_line_plain
 
-    base = format_bulk_line_plain(row.ip, row.g, row.vt, row.otx)
+    base = format_bulk_line_plain(
+        row.ip, row.g, row.vt, row.otx, abuse_score=row.abuse_score
+    )
     st = smap.get(row.ip)
     if not st:
         return base
