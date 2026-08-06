@@ -438,19 +438,7 @@ def _format_health_report(context: ContextTypes.DEFAULT_TYPE) -> str:
     return "\n".join(lines)
 
 
-# keep set_field path below — try_admin_runtime_limit_text follows in file
-PLACEHOLDER_REMOVE = None
-
-
-async def _unused_placeholder_adm_cfg_removed() -> None:
-    return None
-
-
-# --- runtime limit text handler stays below this point in original file ---
-
-
-async def try_admin_runtime_limit_text_PLACEHOLDER():
-    pass
+async def try_admin_runtime_limit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     key = context.user_data.get(ADMIN_PENDING_LIMIT_FIELD)
     if not key:
         return False
