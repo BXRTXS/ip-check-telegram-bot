@@ -137,16 +137,24 @@ async def _geo_single(client: httpx.AsyncClient, ip: str) -> GeoData:
 
 async def _fetch_vt(client: httpx.AsyncClient, ip: str, api_key: str) -> VTData:
     url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
+    window = _intel_lookback_days()
     try:
         r = await _http_get_retry(
             client, url, headers={"x-apikey": api_key}, timeout=30.0, retries=3
         )
         if r.status_code == 404:
-            return VTData(ok=True, malicious=0, suspicious=0, harmless=0, undetected=0)
+            return VTData(
+                ok=True,
+                malicious=0,
+                suspicious=0,
+                harmless=0,
+                undetected=0,
+                window_days=window,
+            )
         r.raise_for_status()
         data = r.json()
     except Exception as e:
-        return VTData(ok=False, error=type(e).__name__)
+        return VTData(ok=False, error=type(e).__name__, window_days=window)
 
     attr = (data.get("data") or {}).get("attributes") or {}
     stats = attr.get("last_analysis_stats") or {}
@@ -160,18 +168,61 @@ async def _fetch_vt(client: httpx.AsyncClient, ip: str, api_key: str) -> VTData:
                 rep_i = int(float(rep))
             except (TypeError, ValueError):
                 rep_i = None
+
+    mal = int(stats.get("malicious") or 0)
+    sus = int(stats.get("suspicious") or 0)
+    harm = int(stats.get("harmless") or 0)
+    und = int(stats.get("undetected") or 0)
+
+    age_days: int | None = None
+    stale = False
+    lad = attr.get("last_analysis_date")
+    if isinstance(lad, (int, float)) and lad > 0:
+        age_days = max(0, int((time.time() - float(lad)) // 86400))
+        if age_days > window:
+            # Детекты старше окна не учитываем — иначе старый «шум» завышает риск.
+            stale = True
+            mal = 0
+            sus = 0
+
     return VTData(
         ok=True,
-        malicious=int(stats.get("malicious") or 0),
-        suspicious=int(stats.get("suspicious") or 0),
-        harmless=int(stats.get("harmless") or 0),
-        undetected=int(stats.get("undetected") or 0),
+        malicious=mal,
+        suspicious=sus,
+        harmless=harm,
+        undetected=und,
         reputation=rep_i,
+        window_days=window,
+        analysis_age_days=age_days,
+        stale=stale,
     )
+
+
+def _parse_pulse_ts(raw: object) -> datetime | None:
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        return None
 
 
 async def _fetch_otx(client: httpx.AsyncClient, ip: str, api_key: str) -> OTXData:
     url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general"
+    window = _intel_lookback_days()
     try:
         r = await _http_get_retry(
             client, url, headers={"X-OTX-API-KEY": api_key}, timeout=30.0, retries=3
@@ -179,23 +230,41 @@ async def _fetch_otx(client: httpx.AsyncClient, ip: str, api_key: str) -> OTXDat
         r.raise_for_status()
         j = r.json()
     except Exception as e:
-        return OTXData(ok=False, error=type(e).__name__)
+        return OTXData(ok=False, error=type(e).__name__, window_days=window)
 
     pulse = j.get("pulse_info") or {}
-    count = int(pulse.get("count") or 0)
+    total = int(pulse.get("count") or 0)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window)
     names: list[str] = []
+    recent = 0
     pulses = pulse.get("pulses") or []
     if isinstance(pulses, list):
-        for p in pulses[:200]:
-            if isinstance(p, dict) and p.get("name"):
+        for p in pulses[:300]:
+            if not isinstance(p, dict):
+                continue
+            ts = _parse_pulse_ts(p.get("modified")) or _parse_pulse_ts(p.get("created"))
+            if ts is None or ts < cutoff:
+                continue
+            recent += 1
+            if p.get("name") and len(names) < 40:
                 names.append(str(p["name"]))
-    return OTXData(ok=True, pulse_count=count, sample_names=names)
+    return OTXData(
+        ok=True,
+        pulse_count=recent,
+        sample_names=names,
+        window_days=window,
+        pulse_count_total=total,
+    )
 
 
-def _abuse_max_age_days() -> int:
+def _intel_lookback_days() -> int:
     from runtime_config import get_limits
 
     return get_limits().abuse_max_age_days
+
+
+def _abuse_max_age_days() -> int:
+    return _intel_lookback_days()
 
 
 def _abuse_report_pages_cap() -> int:
