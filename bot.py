@@ -737,7 +737,7 @@ async def _enrich_dump_src_ips(
     *,
     status_msg,
 ) -> None:
-    if not report.ok or not report.mitigator or not report.mitigator.src_stats:
+    if not report.ok or not report.mitigator:
         return
     uid = update.effective_user.id if update.effective_user else None
     if uid is None:
@@ -747,27 +747,36 @@ async def _enrich_dump_src_ips(
     if not proxy or not _has_any_source(flags, single_ip=False):
         return
 
-    from dump_src_enrich import build_src_enrichment
+    from dump_src_enrich import build_side_enrichment
 
+    cache = context.application.bot_data.get("lookup_cache")
     try:
-        n = len({st.ip for st in report.mitigator.src_stats})
+        n_src = len({st.ip for st in (report.mitigator.src_stats or [])})
+        n_dst = len({st.ip for st in (report.mitigator.dst_stats or [])})
         await status_msg.edit_text(
-            f"Разбор pcap готов. Сверяю <b>{n}</b> src IP (geo, VT, OTX)…",
+            f"Разбор pcap готов. Сверяю src <b>{n_src}</b> / dst <b>{n_dst}</b> "
+            "(geo, VT, OTX)…",
             parse_mode=ParseMode.HTML,
         )
-        enrich = await build_src_enrichment(
-            proxy,
-            report.mitigator.src_stats,
-            flags,
-            limit=_max_ips(),
-            cache=context.application.bot_data.get("lookup_cache"),
-        )
+        if report.mitigator.src_stats:
+            report.src_enrichment = await build_side_enrichment(
+                proxy,
+                report.mitigator.src_stats,
+                flags,
+                limit=_max_ips(),
+                cache=cache,
+            )
+        if report.mitigator.dst_stats:
+            report.dst_enrichment = await build_side_enrichment(
+                proxy,
+                report.mitigator.dst_stats,
+                flags,
+                limit=_max_ips(),
+                cache=cache,
+            )
     except Exception:
-        log.exception("dump src enrichment failed")
+        log.exception("dump enrichment failed")
         return
-
-    if enrich:
-        report.src_enrichment = enrich
 
 
 async def _send_dump_report(
