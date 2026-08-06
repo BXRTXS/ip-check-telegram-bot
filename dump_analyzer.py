@@ -672,6 +672,13 @@ def format_dump_attachment(report: DumpAnalysis) -> str:
     out.append("")
     if report.mitigator:
         out.extend(_mitigator_txt(report.mitigator))
+    if report.dst_enrichment and report.dst_enrichment.txt_lines:
+        out.append("")
+        out.append(
+            f"--- Dst IP репутация ({report.dst_enrichment.checked}/"
+            f"{report.dst_enrichment.total_unique}) ---"
+        )
+        out.extend(report.dst_enrichment.txt_lines)
     if report.src_enrichment and report.src_enrichment.txt_lines:
         out.append("")
         out.append(
