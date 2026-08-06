@@ -779,9 +779,6 @@ def bulk_rows_to_csv(rows: list) -> str:
             ]
         )
     return buf.getvalue()
-        elif isinstance(item, BulkIpRow):
-            lines.append(format_bulk_line_plain(item.ip, item.g, item.vt, item.otx))
-    return lines
 
 
 def pack_pre_chunks(
