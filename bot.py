@@ -925,7 +925,7 @@ async def on_dump_check_ips(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if len(parts) != 3 or parts[0] != "dchk":
         return
     token, which = parts[1], parts[2]
-    if which not in ("src", "dst"):
+    if which not in ("src", "dst", "src24", "dst24"):
         return
 
     batch: DumpIpBatch | None = context.application.bot_data.get("dump_ip_batches", {}).get(
