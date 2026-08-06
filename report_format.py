@@ -43,14 +43,19 @@ class VTData:
     harmless: int = 0
     undetected: int = 0
     reputation: int | None = None
+    window_days: int = 30
+    analysis_age_days: int | None = None
+    stale: bool = False  # last_analysis старше окна — детекты обнулены
 
 
 @dataclass
 class OTXData:
     ok: bool
     error: str | None = None
-    pulse_count: int = 0
+    pulse_count: int = 0  # за окно window_days
     sample_names: list[str] = field(default_factory=list)
+    window_days: int = 30
+    pulse_count_total: int = 0  # всего в ответе OTX (без фильтра)
 
 
 @dataclass
