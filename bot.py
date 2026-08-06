@@ -283,9 +283,9 @@ def _flags_for_user(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> LookupF
 
 
 def _has_any_source(flags: LookupFlags, *, single_ip: bool) -> bool:
-    base = flags.geo or flags.vt or flags.otx
+    base = flags.geo or flags.vt or flags.otx or flags.abuse
     if single_ip:
-        return base or flags.abuse or flags.ripe
+        return base or flags.ripe
     return base
 
 
