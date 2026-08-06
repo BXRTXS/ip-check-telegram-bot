@@ -751,6 +751,15 @@ async def _process_ips_message_locked(
 
     context.user_data["last_check_ips"] = ips
     kb_rows: list[list[InlineKeyboardButton]] = []
+    if not bulk and abuseipdb_api_key():
+        kb_rows.append(
+            [
+                InlineKeyboardButton(
+                    "🚨 Пожаловаться (AbuseIPDB · DDoS)",
+                    callback_data=f"abuserpt:{ips[0]}",
+                )
+            ]
+        )
     if bulk and red_ips:
         red_kb = _red_detail_keyboard(red_ips)
         if red_kb:
@@ -758,7 +767,7 @@ async def _process_ips_message_locked(
     kb_rows.append(
         [InlineKeyboardButton("🔄 Перепроверить без кэша", callback_data="nocache:last")]
     )
-    kb_last = InlineKeyboardMarkup(kb_rows)
+    kb_last = InlineKeyboardMarkup(kb_rows) if kb_rows else None
 
     first = header + chunks[0]
     await status.edit_text(
