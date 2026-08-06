@@ -361,6 +361,57 @@ async def _fetch_abuseipdb(client: httpx.AsyncClient, ip: str, api_key: str) -> 
     )
 
 
+async def _fetch_abuseipdb_score_only(
+    client: httpx.AsyncClient, ip: str, api_key: str
+) -> AbuseIPDBData:
+    """Лёгкий check без пагинации /reports — для bulk."""
+    want = _abuse_max_age_days()
+    ages = []
+    for a in (want, 90, 30):
+        if a not in ages and a > 0:
+            ages.append(a)
+    url = "https://api.abuseipdb.com/api/v2/check"
+    headers = {"Key": api_key, "Accept": "application/json"}
+    try:
+        r: httpx.Response | None = None
+        max_age = 30
+        for age in ages:
+            rr = await _http_get_retry(
+                client,
+                url,
+                params={"ipAddress": ip, "maxAgeInDays": age},
+                headers=headers,
+                timeout=25.0,
+                retries=3,
+            )
+            if rr.status_code == 422:
+                continue
+            rr.raise_for_status()
+            r = rr
+            max_age = age
+            break
+        if r is None:
+            return AbuseIPDBData(ok=False, error="AbuseIPDB 422")
+        j = r.json()
+    except Exception as e:
+        return AbuseIPDBData(ok=False, error=type(e).__name__)
+
+    if isinstance(j, dict) and isinstance(j.get("errors"), list) and j["errors"]:
+        return AbuseIPDBData(ok=False, error="api_error")
+    d = j.get("data") if isinstance(j, dict) else None
+    if not isinstance(d, dict):
+        return AbuseIPDBData(ok=False, error="bad_json")
+    lr = d.get("lastReportedAt")
+    return AbuseIPDBData(
+        ok=True,
+        abuse_confidence_score=int(d.get("abuseConfidenceScore") or 0),
+        total_reports=int(d.get("totalReports") or 0),
+        num_distinct_users=int(d.get("numDistinctUsers") or 0),
+        last_reported_at=str(lr) if lr else None,
+        max_age_days=max_age,
+    )
+
+
 def _ripe_asn_int(value: object) -> int | None:
     try:
         if isinstance(value, bool):
