@@ -639,8 +639,10 @@ def format_dump_html(report: DumpAnalysis) -> str:
             _mitigator_html(
                 report.mitigator,
                 has_src_enrichment=bool(report.src_enrichment),
+                has_dst_enrichment=bool(report.dst_enrichment),
             )
         )
+        lines.extend(_dst_enrichment_html(report.dst_enrichment))
         lines.extend(_src_enrichment_html(report.src_enrichment))
     if report.findings:
         lines.extend(["", "<b>Найденное</b>"])
