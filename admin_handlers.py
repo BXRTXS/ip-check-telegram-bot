@@ -353,6 +353,32 @@ async def on_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
+    if data == "adm:health":
+        await q.edit_message_text(
+            _format_health_report(context),
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("🔄 Обновить", callback_data="adm:health")],
+                    [InlineKeyboardButton("« Меню", callback_data="adm:menu")],
+                ]
+            ),
+            disable_web_page_preview=True,
+        )
+        return
+
+    if data == "adm:cache_clear":
+        cache = context.application.bot_data.get("lookup_cache")
+        n = cache.flush_all() if cache else 0
+        await q.edit_message_text(
+            f"🗑 Кэш lookups очищен: удалено <b>{n}</b> записей.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("« Меню", callback_data="adm:menu")]]
+            ),
+        )
+        return
+
     if data.startswith("adm:cfg:"):
         key = data.split(":", 2)[2]
         if key not in EDITABLE_LIMIT_FIELDS:
@@ -370,7 +396,61 @@ async def on_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
 
-async def try_admin_runtime_limit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+def _format_health_report(context: ContextTypes.DEFAULT_TYPE) -> str:
+    import os
+    import shutil
+    from pathlib import Path
+
+    from keys import abuseipdb_api_key, otx_api_key, vt_api_key
+
+    lines = ["<b>🩺 Health</b>"]
+    proxy = (os.environ.get("TG_SOCKS_PROXY") or "").strip()
+    lines.append(f"• SOCKS: <code>{h(proxy or 'не задан')}</code>")
+    lines.append(f"• VT ключ: {'✅' if vt_api_key() else '❌'}")
+    lines.append(f"• OTX ключ: {'✅' if otx_api_key() else '❌'}")
+    lines.append(f"• AbuseIPDB ключ: {'✅' if abuseipdb_api_key() else '❌'}")
+    tshark = (os.environ.get("IP_CHECK_TSHARK") or "tshark").strip() or "tshark"
+    tshark_path = shutil.which(tshark) or tshark
+    lines.append(
+        f"• tshark: <code>{h(tshark_path)}</code> "
+        f"{'✅' if shutil.which(tshark) else '❌'}"
+    )
+    cache = context.application.bot_data.get("lookup_cache")
+    if cache:
+        st = cache.stats()
+        kb = st["bytes"] / 1024
+        lines.append(f"• Кэш lookups: <b>{st['entries']}</b> IP, {kb:.1f} KiB")
+    else:
+        lines.append("• Кэш lookups: —")
+    aud = _audit(context)
+    try:
+        path = Path(aud._path)  # noqa: SLF001
+        size = path.stat().st_size if path.is_file() else 0
+        _, total = aud.read_recent(limit=1, offset=0)
+        lines.append(f"• Audit: ~{total} событий, {size / 1024:.1f} KiB")
+    except Exception:
+        lines.append("• Audit: ?")
+    lim = get_limits()
+    lines.append(
+        f"• Лимиты: max_ips={lim.max_ips_per_request}, "
+        f"bulk_conc={lim.bulk_concurrency}, cache_ttl={lim.lookup_cache_ttl_hours}ч"
+    )
+    return "\n".join(lines)
+
+
+# keep set_field path below — try_admin_runtime_limit_text follows in file
+PLACEHOLDER_REMOVE = None
+
+
+async def _unused_placeholder_adm_cfg_removed() -> None:
+    return None
+
+
+# --- runtime limit text handler stays below this point in original file ---
+
+
+async def try_admin_runtime_limit_text_PLACEHOLDER():
+    pass
     key = context.user_data.get(ADMIN_PENDING_LIMIT_FIELD)
     if not key:
         return False
