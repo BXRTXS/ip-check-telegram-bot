@@ -238,11 +238,13 @@ async def _fetch_abuse_report_pages(
     for page in range(1, max_pages + 1):
         if need and len(out) >= need:
             break
-        r = await client.get(
+        r = await _http_get_retry(
+            client,
             "https://api.abuseipdb.com/api/v2/reports",
             params={"ipAddress": ip, "maxAgeInDays": max_age, "page": page, "perPage": per_page},
             headers={"Key": api_key, "Accept": "application/json"},
             timeout=45.0,
+            retries=2,
         )
         r.raise_for_status()
         j = r.json()
