@@ -138,7 +138,9 @@ async def _geo_single(client: httpx.AsyncClient, ip: str) -> GeoData:
 async def _fetch_vt(client: httpx.AsyncClient, ip: str, api_key: str) -> VTData:
     url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
     try:
-        r = await client.get(url, headers={"x-apikey": api_key}, timeout=30.0)
+        r = await _http_get_retry(
+            client, url, headers={"x-apikey": api_key}, timeout=30.0, retries=3
+        )
         if r.status_code == 404:
             return VTData(ok=True, malicious=0, suspicious=0, harmless=0, undetected=0)
         r.raise_for_status()
@@ -171,7 +173,9 @@ async def _fetch_vt(client: httpx.AsyncClient, ip: str, api_key: str) -> VTData:
 async def _fetch_otx(client: httpx.AsyncClient, ip: str, api_key: str) -> OTXData:
     url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general"
     try:
-        r = await client.get(url, headers={"X-OTX-API-KEY": api_key}, timeout=30.0)
+        r = await _http_get_retry(
+            client, url, headers={"X-OTX-API-KEY": api_key}, timeout=30.0, retries=3
+        )
         r.raise_for_status()
         j = r.json()
     except Exception as e:
