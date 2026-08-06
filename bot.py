@@ -1215,7 +1215,7 @@ def main() -> None:
     if not admin_ids:
         log.warning("IP_CHECK_ADMIN_USER_IDS пуст — команда /admin отключена")
 
-    builder = Application.builder().token(token)
+    builder = Application.builder().token(token).concurrent_updates(True)
     if px and not _ptb_skip_proxy():
         hproxy = _normalize_ptb_proxy(px)
         req, gur = _ptb_http_requests(hproxy)
@@ -1230,7 +1230,21 @@ def main() -> None:
     else:
         log.warning("TG_SOCKS_PROXY пуст — на mor Telegram и проверки IP могут не работать.")
 
-    app = builder.build()
+    async def _post_init(application: Application) -> None:
+        cmds = [
+            BotCommand("start", "Старт"),
+            BotCommand("help", "Справка"),
+            BotCommand("settings", "Источники проверки"),
+        ]
+        if admin_ids:
+            cmds.append(BotCommand("admin", "Админ-панель"))
+            cmds.append(BotCommand("dump", "Анализ дампа (admin)"))
+        try:
+            await application.bot.set_my_commands(cmds)
+        except Exception:
+            log.exception("set_my_commands failed")
+
+    app = builder.post_init(_post_init).build()
     app.bot_data["settings_store"] = store
     app.bot_data["access_store"] = access_store
     app.bot_data["audit_log"] = audit
@@ -1240,6 +1254,7 @@ def main() -> None:
     app.bot_data["lookup_cache"] = lookup_cache
     app.bot_data["admin_user_ids"] = admin_ids
     app.bot_data["env_allowed_ids"] = env_allowed
+    app.bot_data["user_locks"] = {}
     dump_zip_dir = data_dir / "dump_zips"
     dump_zip_dir.mkdir(parents=True, exist_ok=True)
     purge_old_bundles(dump_zip_dir)
@@ -1248,6 +1263,7 @@ def main() -> None:
     app.bot_data["dump_ip_batches"] = {}
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("dump", cmd_dump))
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("admin", cmd_admin))
@@ -1255,6 +1271,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_dump_zip_pick, pattern=r"^dz:"))
     app.add_handler(CallbackQueryHandler(on_dump_check_ips, pattern=r"^dchk:"))
     app.add_handler(CallbackQueryHandler(on_detail_ip, pattern=r"^detail:"))
+    app.add_handler(CallbackQueryHandler(on_nocache_last, pattern=r"^nocache:last$"))
     app.add_handler(CallbackQueryHandler(on_settings_toggle, pattern=r"^t:(geo|vt|otx|abuse|ripe)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
