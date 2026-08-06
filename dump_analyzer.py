@@ -127,12 +127,6 @@ def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
         out = (e.stdout or "") if isinstance(e.stdout, str) else ""
         err = (e.stderr or "") if isinstance(e.stderr, str) else f"timeout after {timeout}s"
         return subprocess.CompletedProcess(cmd, 124, out, err)
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
 
 
 def _capinfos(path: Path, timeout: int) -> tuple[int | None, float | None, list[str]]:
