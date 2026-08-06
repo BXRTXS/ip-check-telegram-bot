@@ -7,11 +7,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
+from ipaddress import IPv4Network
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from mitigator_analyze import IpBlockStats, MitigatorReport
 
-DumpWhich = Literal["src", "dst"]
+DumpWhich = Literal["src", "dst", "src24", "dst24"]
 
 _BATCH_TTL_SEC = 3600
 _MAX_BATCHES = 40
