@@ -377,6 +377,7 @@ def build_detail_attachment_text(
             f"malicious={vt.malicious} suspicious={vt.suspicious} "
             f"harmless={vt.harmless} undetected={vt.undetected} reputation={vt.reputation}"
         )
+        out.append(f"window_days={vt.window_days} analysis_age_days={vt.analysis_age_days} stale={vt.stale}")
     out.append(f"API: https://www.virustotal.com/api/v3/ip_addresses/{ip}")
     out.append(f"Веб: https://www.virustotal.com/gui/ip-address/{ip}")
     out.append("")
@@ -385,7 +386,10 @@ def build_detail_attachment_text(
     if not otx.ok:
         out.append(otx.error or "—")
     else:
-        out.append(f"pulse_count={otx.pulse_count}")
+        out.append(
+            f"pulse_count={otx.pulse_count} (за {otx.window_days} дн.) "
+            f"pulse_count_total={otx.pulse_count_total}"
+        )
         for i, n in enumerate(otx.sample_names, 1):
             out.append(f"  {i}. {n}")
     out.append(f"API: https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general")
