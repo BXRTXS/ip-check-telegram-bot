@@ -275,6 +275,65 @@ def _abuse_report_pages_cap() -> int:
     return get_limits().abuse_report_pages_max
 
 
+# AbuseIPDB category: https://www.abuseipdb.com/categories — 4 = DDoS Attack
+ABUSE_CATEGORY_DDOS = 4
+ABUSE_REPORT_COMMENT = "DDoS"
+
+
+async def report_ip_abuseipdb(
+    proxy_url: str | None,
+    ip: str,
+    api_key: str,
+) -> tuple[bool, str]:
+    """
+    POST /api/v2/report — категория DDoS, фиксированный comment «DDoS».
+    Возвращает (ok, message_for_user).
+    """
+    limits = httpx.Limits(max_connections=4, max_keepalive_connections=2)
+    transport = httpx.AsyncHTTPTransport(proxy=proxy_url) if proxy_url else None
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, limits=limits, follow_redirects=True
+        ) as client:
+            r = await client.post(
+                "https://api.abuseipdb.com/api/v2/report",
+                headers={"Key": api_key, "Accept": "application/json"},
+                data={
+                    "ip": ip,
+                    "categories": str(ABUSE_CATEGORY_DDOS),
+                    "comment": ABUSE_REPORT_COMMENT,
+                },
+                timeout=30.0,
+            )
+    except Exception as e:
+        return False, f"сеть: {type(e).__name__}"
+
+    try:
+        j = r.json()
+    except Exception:
+        j = None
+
+    if r.status_code in (200, 201) and isinstance(j, dict):
+        data = j.get("data") if isinstance(j.get("data"), dict) else {}
+        score = data.get("abuseConfidenceScore")
+        extra = f" (confidence {score}%)" if score is not None else ""
+        return True, f"отправлено в AbuseIPDB: DDoS{extra}"
+
+    err = f"HTTP {r.status_code}"
+    if isinstance(j, dict):
+        errors = j.get("errors")
+        if isinstance(errors, list) and errors:
+            parts = []
+            for e in errors[:2]:
+                if isinstance(e, dict):
+                    parts.append(str(e.get("detail") or e.get("title") or e))
+                else:
+                    parts.append(str(e))
+            if parts:
+                err = "; ".join(parts)[:220]
+    return False, err
+
+
 def _parse_abuse_report_item(raw: object) -> AbuseReportRow | None:
     if not isinstance(raw, dict):
         return None
