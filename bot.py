@@ -426,7 +426,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     _record_activity(update, context, action="start")
     extra = ""
-    uid = update.effective_user.id if update.effective_user else None
     if _is_admin(update, context):
         extra = "\n\nАдмин: /admin — пользователи и журнал; /dump — разбор pcap (скрыто)."
     await update.effective_message.reply_html(
@@ -435,9 +434,31 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Домены → резолв в IPv4 (DNS, при ключах VT/OTX), затем проверка адресов.\n"
         "<b>1 IP</b> — детальный отчёт (в т.ч. домены за IP, если найдены); "
         "<b>несколько</b> — компактные строки в <code>pre</code> (параллельно, быстро).\n"
-        "Сервисы — в /settings."
+        "Сервисы — в /settings. Справка — /help."
         + extra
     )
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await _reject_if_denied(update, context):
+        return
+    lines = [
+        "<b>Справка</b>",
+        "• Текст / <code>.txt</code> с IPv4 или доменами — проверка",
+        "• /settings — вкл/выкл geo, VT, OTX, AbuseIPDB, RIPEstat",
+        "• 1 IP — детальный отчёт + .txt; N IP — bulk + CSV",
+        "• После bulk: 🔴 точечно, 🔄 без кэша",
+    ]
+    if _is_admin(update, context):
+        lines.extend(
+            [
+                "",
+                "<b>Админ</b>",
+                "• /admin — whitelist, audit, health, очистка кэша",
+                "• /dump — pcap / zip / DROP-логи",
+            ]
+        )
+    await update.effective_message.reply_html("\n".join(lines))
 
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
