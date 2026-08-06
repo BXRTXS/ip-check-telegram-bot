@@ -282,7 +282,9 @@ async def _fetch_abuseipdb(client: httpx.AsyncClient, ip: str, api_key: str) -> 
 
     async def _check(age: int) -> httpx.Response:
         params = {"ipAddress": ip, "maxAgeInDays": age, "verbose": ""}
-        return await client.get(url, params=params, headers=headers, timeout=35.0)
+        return await _http_get_retry(
+            client, url, params=params, headers=headers, timeout=35.0, retries=3
+        )
 
     r: httpx.Response | None = None
     max_age = 30
