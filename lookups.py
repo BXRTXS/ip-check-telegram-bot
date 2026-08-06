@@ -63,6 +63,37 @@ _GEO_FIELDS = (
     "status,message,country,countryCode,regionName,city,isp,org,as,mobile,proxy,hosting,query"
 )
 
+_RIPE_HOLDER_SEM = asyncio.Semaphore(10)
+
+
+async def _http_get_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    params: dict | None = None,
+    timeout: float = 30.0,
+    retries: int = 3,
+) -> httpx.Response:
+    """GET с повтором на 429/5xx; учитывает Retry-After."""
+    last: httpx.Response | None = None
+    for attempt in range(retries):
+        last = await client.get(url, headers=headers, params=params, timeout=timeout)
+        if last.status_code not in (429, 500, 502, 503, 504):
+            return last
+        if attempt >= retries - 1:
+            break
+        ra = last.headers.get("Retry-After") or last.headers.get("retry-after")
+        delay = 1.5 * (2**attempt)
+        if ra:
+            try:
+                delay = max(delay, float(ra))
+            except ValueError:
+                pass
+        await asyncio.sleep(min(delay, 45.0))
+    assert last is not None
+    return last
+
 
 async def _geo_batch_raw(client: httpx.AsyncClient, ips: list[str]) -> dict[str, GeoData]:
     out: dict[str, GeoData] = {}
