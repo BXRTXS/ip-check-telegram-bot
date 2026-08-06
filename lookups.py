@@ -628,9 +628,12 @@ async def _one_ip_intel(
     geo_pre: GeoData | None,
     sem: asyncio.Semaphore,
     cache: LookupCacheStore | None = None,
-) -> tuple[str, GeoData, VTData, OTXData]:
+    *,
+    use_cache: bool = True,
+    pending_cache: dict[str, dict] | None = None,
+) -> tuple[str, GeoData, VTData, OTXData, AbuseIPDBData | None]:
     async with sem:
-        cached = cache.get_fresh(ip) if cache else None
+        cached = cache.get_fresh(ip) if (cache and use_cache) else None
         to_save: dict[str, object] = {}
 
         if geo_pre is not None:
@@ -645,35 +648,76 @@ async def _one_ip_intel(
 
         vt_k = vt_api_key() if flags.vt else None
         otx_k = otx_api_key() if flags.otx else None
+        abuse_k = abuseipdb_api_key() if flags.abuse else None
 
-        if flags.vt and cached and cached.vt is not None:
+        need_vt = bool(flags.vt and vt_k and not (cached and cached.vt is not None))
+        need_otx = bool(flags.otx and otx_k and not (cached and cached.otx is not None))
+        need_abuse = bool(
+            flags.abuse and abuse_k and not (cached and cached.abuse is not None)
+        )
+
+        async def _vt() -> VTData:
+            return await _fetch_vt(client, ip, vt_k)  # type: ignore[arg-type]
+
+        async def _otx() -> OTXData:
+            return await _fetch_otx(client, ip, otx_k)  # type: ignore[arg-type]
+
+        async def _abuse() -> AbuseIPDBData:
+            return await _fetch_abuseipdb_score_only(client, ip, abuse_k)  # type: ignore[arg-type]
+
+        tasks: list = []
+        keys: list[str] = []
+        if need_vt:
+            tasks.append(_vt())
+            keys.append("vt")
+        if need_otx:
+            tasks.append(_otx())
+            keys.append("otx")
+        if need_abuse:
+            tasks.append(_abuse())
+            keys.append("abuse")
+
+        fetched: dict[str, object] = {}
+        if tasks:
+            results = await asyncio.gather(*tasks)
+            fetched = dict(zip(keys, results))
+
+        if flags.vt and cached and cached.vt is not None and "vt" not in fetched:
             vt = cached.vt
-        elif vt_k:
-
-            async def vt_coro() -> VTData:
-                return await _fetch_vt(client, ip, vt_k)
-
-            vt = await vt_coro()
+        elif "vt" in fetched:
+            vt = fetched["vt"]  # type: ignore[assignment]
             to_save["vt"] = vt
+        elif flags.vt and not vt_k:
+            vt = VTData(ok=False, error="выкл / нет ключа")
+        elif flags.vt:
+            vt = VTData(ok=False, error="выкл / нет ключа")
         else:
             vt = VTData(ok=False, error="выкл / нет ключа")
 
-        if flags.otx and cached and cached.otx is not None:
+        if flags.otx and cached and cached.otx is not None and "otx" not in fetched:
             otx = cached.otx
-        elif otx_k:
-
-            async def otx_coro() -> OTXData:
-                return await _fetch_otx(client, ip, otx_k)
-
-            otx = await otx_coro()
+        elif "otx" in fetched:
+            otx = fetched["otx"]  # type: ignore[assignment]
             to_save["otx"] = otx
         else:
             otx = OTXData(ok=False, error="выкл / нет ключа")
 
-        if cache and to_save:
-            cache.merge(ip, **to_save)  # type: ignore[arg-type]
+        abuse: AbuseIPDBData | None = None
+        if flags.abuse and cached and cached.abuse is not None and "abuse" not in fetched:
+            abuse = cached.abuse
+        elif "abuse" in fetched:
+            abuse = fetched["abuse"]  # type: ignore[assignment]
+            to_save["abuse"] = abuse
+        elif not flags.abuse:
+            abuse = None
 
-        return ip, g, vt, otx
+        if to_save:
+            if pending_cache is not None:
+                pending_cache.setdefault(ip, {}).update(to_save)
+            elif cache:
+                cache.merge(ip, **to_save)  # type: ignore[arg-type]
+
+        return ip, g, vt, otx, abuse
 
 
 async def fetch_bulk_rows(
@@ -681,8 +725,11 @@ async def fetch_bulk_rows(
     ips: list[str],
     flags: LookupFlags,
     cache: LookupCacheStore | None = None,
+    *,
+    use_cache: bool = True,
+    on_progress=None,
 ) -> list[BulkIpRow]:
-    """Массовая проверка: geo + VT + OTX для списка IP."""
+    """Массовая проверка: geo + VT + OTX (+ лёгкий Abuse score) для списка IP."""
     if not ips:
         return []
     limits = httpx.Limits(max_connections=24, max_keepalive_connections=12)
@@ -690,13 +737,32 @@ async def fetch_bulk_rows(
     from runtime_config import get_limits
 
     sem = asyncio.Semaphore(get_limits().bulk_concurrency)
+    pending_cache: dict[str, dict] = {}
+    progress_lock = asyncio.Lock()
+    done_n = 0
+    total_n = len(ips)
+
+    async def _bump() -> None:
+        nonlocal done_n
+        if on_progress is None:
+            return
+        async with progress_lock:
+            done_n += 1
+            n = done_n
+        # чаще в начале, затем каждый ~10%
+        step = max(1, total_n // 10)
+        if n == 1 or n == total_n or n % step == 0:
+            try:
+                await on_progress(n, total_n)
+            except Exception:
+                pass
 
     async with httpx.AsyncClient(transport=transport, limits=limits, follow_redirects=True) as client:
         geo_map: dict[str, GeoData] = {}
         if flags.geo:
             need_geo: list[str] = []
             for ip in ips:
-                c = cache.get_fresh(ip) if cache else None
+                c = cache.get_fresh(ip) if (cache and use_cache) else None
                 if c and c.geo is not None:
                     geo_map[ip] = c.geo
                 else:
@@ -706,17 +772,23 @@ async def fetch_bulk_rows(
                     g = await _geo_single(client, need_geo[0])
                     geo_map[need_geo[0]] = g
                     if cache:
-                        cache.merge(need_geo[0], geo=g)
+                        pending_cache.setdefault(need_geo[0], {})["geo"] = g
                 else:
                     fetched = await _geo_batch_raw(client, need_geo)
                     geo_map.update(fetched)
                     if cache:
                         for ip, g in fetched.items():
-                            cache.merge(ip, geo=g)
+                            pending_cache.setdefault(ip, {})["geo"] = g
 
         async def row(ip: str) -> BulkIpRow:
-            c = cache.get_fresh(ip) if cache else None
-            if c and c.covers(geo=flags.geo, vt=flags.vt, otx=flags.otx):
+            c = cache.get_fresh(ip) if (cache and use_cache) else None
+            covers_abuse = (not flags.abuse) or (c is not None and c.abuse is not None)
+            if (
+                c
+                and use_cache
+                and c.covers(geo=flags.geo, vt=flags.vt, otx=flags.otx)
+                and covers_abuse
+            ):
                 g = c.geo if flags.geo else GeoData(ok=False, error="выкл")
                 vt = c.vt if flags.vt else VTData(ok=False, error="выкл / нет ключа")
                 otx = c.otx if flags.otx else OTXData(ok=False, error="выкл / нет ключа")
@@ -726,14 +798,31 @@ async def fetch_bulk_rows(
                     vt = VTData(ok=False, error="выкл / нет ключа")
                 if otx is None:
                     otx = OTXData(ok=False, error="выкл / нет ключа")
+                abuse = c.abuse if flags.abuse else None
             else:
-                _, g, vt, otx = await _one_ip_intel(
-                    client, ip, flags, geo_map.get(ip), sem, cache=cache
+                _, g, vt, otx, abuse = await _one_ip_intel(
+                    client,
+                    ip,
+                    flags,
+                    geo_map.get(ip),
+                    sem,
+                    cache=cache,
+                    use_cache=use_cache,
+                    pending_cache=pending_cache if cache else None,
                 )
-            is_red = bulk_row_is_red(g, vt, otx)
-            return BulkIpRow(ip=ip, g=g, vt=vt, otx=otx, is_red=is_red)
+            abuse_score = abuse.abuse_confidence_score if abuse and abuse.ok else None
+            abuse_for_red = abuse if (abuse and abuse.ok) else None
+            is_red = bulk_row_is_red(g, vt, otx, abuse=abuse_for_red)
+            await _bump()
+            return BulkIpRow(
+                ip=ip, g=g, vt=vt, otx=otx, is_red=is_red, abuse_score=abuse_score
+            )
 
-        return list(await asyncio.gather(*[row(ip) for ip in ips]))
+        rows = list(await asyncio.gather(*[row(ip) for ip in ips]))
+
+    if cache and pending_cache:
+        cache.merge_many(pending_cache)
+    return rows
 
 
 async def run_lookups_for_ips(
@@ -741,15 +830,27 @@ async def run_lookups_for_ips(
     ips: list[str],
     flags: LookupFlags,
     cache: LookupCacheStore | None = None,
-) -> tuple[list[str], list[str], str | None, int]:
+    *,
+    use_cache: bool = True,
+    on_progress=None,
+) -> tuple[list[str], list[str], str | None, int, list[BulkIpRow] | None]:
     """
-    Возвращает (html_chunks, red_ips, detail_attachment_text, cached_count).
+    Возвращает (html_chunks, red_ips, detail_attachment_text, cached_count, bulk_rows|None).
     """
     flabel = _flags_label(flags)
 
     if len(ips) > 1:
-        n_cached = cache.count_bulk_cached(ips, flags) if cache else 0
-        rows = await fetch_bulk_rows(proxy_url, ips, flags, cache=cache)
+        n_cached = (
+            cache.count_bulk_cached(ips, flags) if (cache and use_cache) else 0
+        )
+        rows = await fetch_bulk_rows(
+            proxy_url,
+            ips,
+            flags,
+            cache=cache,
+            use_cache=use_cache,
+            on_progress=on_progress,
+        )
         grouped = group_bulk_by_subnet(rows)
         lines = format_bulk_output(grouped)
         red_ips = [r.ip for r in rows if r.is_red]
@@ -759,10 +860,11 @@ async def run_lookups_for_ips(
             red_ips,
             None,
             n_cached,
+            rows,
         )
 
     ip = ips[0]
-    cached = cache.get_fresh(ip) if cache else None
+    cached = cache.get_fresh(ip) if (cache and use_cache) else None
     if cached and cached.covers(
         geo=flags.geo,
         vt=flags.vt,
@@ -793,7 +895,7 @@ async def run_lookups_for_ips(
             ip, g, vt, otx, abuse_fmt, ripe_fmt,
             hosts=hosts_fmt, flags_used=flabel,
         )
-        return [html], [], att, 1
+        return [html], [], att, 1, None
 
     limits = httpx.Limits(max_connections=24, max_keepalive_connections=12)
     transport = httpx.AsyncHTTPTransport(proxy=proxy_url) if proxy_url else None
@@ -810,14 +912,29 @@ async def run_lookups_for_ips(
                 geo_map[ip] = await _geo_single(client, ip)
                 if cache:
                     cache.merge(ip, geo=geo_map[ip])
-        _, g, vt, otx = await _one_ip_intel(
-            client, ip, flags, geo_map.get(ip), sem, cache=cache
+        # detail: abuse полный через maybe_abuse; в _one_ip_intel abuse только score —
+        # отключаем abuse во flags для intel, чтобы не дублировать.
+        intel_flags = LookupFlags(
+            geo=flags.geo,
+            vt=flags.vt,
+            otx=flags.otx,
+            abuse=False,
+            ripe=False,
+        )
+        _, g, vt, otx, _ = await _one_ip_intel(
+            client,
+            ip,
+            intel_flags,
+            geo_map.get(ip),
+            sem,
+            cache=cache,
+            use_cache=use_cache,
         )
 
         async def maybe_abuse() -> AbuseIPDBData | None:
             if not flags.abuse:
                 return None
-            if cached and cached.abuse is not None:
+            if cached and cached.abuse is not None and use_cache:
                 return cached.abuse
             k = abuseipdb_api_key()
             if not k:
@@ -830,7 +947,7 @@ async def run_lookups_for_ips(
         async def maybe_ripe() -> RIPEstatData | None:
             if not flags.ripe:
                 return None
-            if cached and cached.ripe is not None:
+            if cached and cached.ripe is not None and use_cache:
                 return cached.ripe
             data = await _fetch_ripestat(client, ip)
             if cache:
@@ -839,7 +956,7 @@ async def run_lookups_for_ips(
 
         abuse_fmt, ripe_fmt = await asyncio.gather(maybe_abuse(), maybe_ripe())
 
-        if cached and cached.hosts is not None:
+        if cached and cached.hosts is not None and use_cache:
             hosts_fmt = cached.hosts
         else:
             hosts_fmt = await fetch_host_data(
@@ -876,4 +993,4 @@ async def run_lookups_for_ips(
             hosts=hosts_fmt,
             flags_used=flabel,
         )
-        return [html], [], att, 0
+        return [html], [], att, 0, None
