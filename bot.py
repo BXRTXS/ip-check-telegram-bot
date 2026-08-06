@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from io import BytesIO
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
