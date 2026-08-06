@@ -27,7 +27,7 @@ class RuntimeLimits:
     audit_ips_max: int = 80
     host_max_domains: int = 80
     host_tg_show: int = 20
-    abuse_max_age_days: int = 365
+    abuse_max_age_days: int = 30
     abuse_report_pages_max: int = 200
     dump_max_mb: int = 15
     dump_timeout_sec: int = 90
