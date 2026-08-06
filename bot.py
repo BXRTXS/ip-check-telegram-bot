@@ -821,6 +821,53 @@ async def on_nocache_last(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
 
 
+async def on_abuse_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    q = update.callback_query
+    if not q:
+        return
+    if await _reject_if_denied(update, context):
+        await q.answer()
+        return
+    raw = (q.data or "").strip()
+    if not raw.startswith("abuserpt:"):
+        await q.answer()
+        return
+    ip = raw[len("abuserpt:") :].strip()
+    if not _valid_ipv4(ip):
+        await q.answer("Некорректный IP", show_alert=True)
+        return
+    key = abuseipdb_api_key()
+    if not key:
+        await q.answer("Нет ключа AbuseIPDB", show_alert=True)
+        return
+    proxy = _httpx_proxy_from_env()
+    if not proxy:
+        await q.answer("Нужен TG_SOCKS_PROXY", show_alert=True)
+        return
+
+    await q.answer("Отправляю в AbuseIPDB…")
+    ok, msg = await report_ip_abuseipdb(proxy, ip, key)
+    u = update.effective_user
+    if u:
+        _record_activity(update, context, action="abuse_report")
+        _audit_log(context).append(
+            user_id=u.id,
+            username=u.username,
+            display_name=_display_name(update),
+            ips=[ip],
+            mode="abuse_report_ddos" if ok else "abuse_report_fail",
+            source="callback",
+        )
+    if ok:
+        text = f"✅ <code>{h(ip)}</code> — {h(msg)}"
+    else:
+        text = f"❌ <code>{h(ip)}</code> — {h(msg)}"
+    if q.message:
+        await q.message.reply_html(text)
+    else:
+        await update.effective_message.reply_html(text)
+
+
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.text:
         return
