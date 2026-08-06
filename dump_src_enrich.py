@@ -157,12 +157,25 @@ async def build_src_enrichment(
     limit: int,
     cache=None,
 ) -> DumpSrcEnrichment | None:
-    if not src_stats or not proxy_url:
+    return await build_side_enrichment(
+        proxy_url, src_stats, flags, limit=limit, cache=cache
+    )
+
+
+async def build_side_enrichment(
+    proxy_url: str | None,
+    stats: list[IpBlockStats],
+    flags: LookupFlags,
+    *,
+    limit: int,
+    cache=None,
+) -> DumpSrcEnrichment | None:
+    if not stats or not proxy_url:
         return None
 
     unique: list[str] = []
     seen: set[str] = set()
-    for st in src_stats:
+    for st in stats:
         if st.ip not in seen:
             seen.add(st.ip)
             unique.append(st.ip)
@@ -175,7 +188,7 @@ async def build_src_enrichment(
     if not rows:
         return None
 
-    smap = _stats_map(src_stats)
+    smap = _stats_map(stats)
     grouped = group_bulk_by_subnet(rows)
     html_lines = format_src_enrichment(grouped, smap, html=True)
     txt_lines = format_src_enrichment(grouped, smap, html=False)
