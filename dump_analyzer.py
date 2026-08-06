@@ -115,7 +115,18 @@ def prepare_pcap_path(data: bytes, filename: str) -> tuple[Path | None, str | No
 
 
 def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    try:
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as e:
+        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        err = (e.stderr or "") if isinstance(e.stderr, str) else f"timeout after {timeout}s"
+        return subprocess.CompletedProcess(cmd, 124, out, err)
         cmd,
         capture_output=True,
         text=True,
