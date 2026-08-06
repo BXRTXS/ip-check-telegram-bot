@@ -638,7 +638,7 @@ def format_detailed_html(
     return "\n".join(lines)
 
 
-def format_bulk_line_plain(ip: str, g: GeoData, vt: VTData, otx: OTXData) -> str:
+def format_bulk_line_plain(ip: str, g: GeoData, vt: VTData, otx: OTXData, *, abuse_score: int | None = None) -> str:
     """Одна строка на IP, plain text (потом целиком в &lt;pre&gt; с h())."""
     geo_s = _geo_one_line_plain(g)
     if vt.ok:
@@ -649,9 +649,19 @@ def format_bulk_line_plain(ip: str, g: GeoData, vt: VTData, otx: OTXData) -> str
         otx_s = f"OTX {otx.pulse_count}"
     else:
         otx_s = "OTX —"
-    score, verdict, _ = _risk_heuristic(g, vt, otx)
+    abuse_obj = None
+    if abuse_score is not None:
+        abuse_obj = AbuseIPDBData(ok=True, abuse_confidence_score=abuse_score)
+        ab_s = f"Abuse {abuse_score}"
+    else:
+        ab_s = None
+    score, verdict, _ = _risk_heuristic(g, vt, otx, abuse=abuse_obj)
     vshort = verdict.split()[0] if verdict else "?"
-    return f"{ip} │ {geo_s} │ {vt_s} │ {otx_s} │ {score}/100 {vshort}"
+    parts = [ip, geo_s, vt_s, otx_s]
+    if ab_s:
+        parts.append(ab_s)
+    parts.append(f"{score}/100 {vshort}")
+    return " │ ".join(parts)
 
 
 def format_bulk_subnet_block(cidr: str, as_label: str, rows: list) -> list[str]:
@@ -662,9 +672,14 @@ def format_bulk_subnet_block(cidr: str, as_label: str, rows: list) -> list[str]:
     max_score = 0
     max_verdict = "✅"
     max_mal = max_susp = max_otx = 0
+    max_abuse = -1
     any_red = False
     for r in typed:
-        sc, ver, _ = _risk_heuristic(r.g, r.vt, r.otx)
+        ab = None
+        if getattr(r, "abuse_score", None) is not None:
+            ab = AbuseIPDBData(ok=True, abuse_confidence_score=int(r.abuse_score))
+            max_abuse = max(max_abuse, int(r.abuse_score))
+        sc, ver, _ = _risk_heuristic(r.g, r.vt, r.otx, abuse=ab)
         if sc > max_score:
             max_score = sc
             max_verdict = ver.split()[0] if ver else "?"
@@ -678,10 +693,14 @@ def format_bulk_subnet_block(cidr: str, as_label: str, rows: list) -> list[str]:
 
     vt_s = f"VT m{max_mal}/s{max_susp}" if any(r.vt.ok for r in typed) else "VT —"
     otx_s = f"OTX max {max_otx}" if any(r.otx.ok for r in typed) else "OTX —"
+    ab_s = f"Abuse max {max_abuse}" if max_abuse >= 0 else None
     flag = " 🔴" if any_red else ""
+    mid = f"{vt_s} │ {otx_s}"
+    if ab_s:
+        mid += f" │ {ab_s}"
     header = (
         f"▸ {cidr} ×{len(typed)} │ {as_label} │ {geo_s} │ "
-        f"{vt_s} │ {otx_s} │ max {max_score}/100 {max_verdict}{flag}"
+        f"{mid} │ max {max_score}/100 {max_verdict}{flag}"
     )
     ips = [r.ip for r in typed]
     if len(ips) <= 12:
@@ -705,6 +724,61 @@ def format_bulk_output(grouped: list) -> list[str]:
                     item.rows,
                 )
             )
+        elif isinstance(item, BulkIpRow):
+            lines.append(
+                format_bulk_line_plain(
+                    item.ip, item.g, item.vt, item.otx, abuse_score=item.abuse_score
+                )
+            )
+    return lines
+
+
+def bulk_rows_to_csv(rows: list) -> str:
+    """CSV для массовой проверки (TSV-совместимый через запятую)."""
+    import csv
+    from io import StringIO
+
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(
+        [
+            "ip",
+            "country",
+            "city",
+            "asn",
+            "isp",
+            "vt_malicious",
+            "vt_suspicious",
+            "otx_pulses",
+            "abuse_score",
+            "score",
+            "verdict",
+            "is_red",
+        ]
+    )
+    for r in rows:
+        ab = None
+        if getattr(r, "abuse_score", None) is not None:
+            ab = AbuseIPDBData(ok=True, abuse_confidence_score=int(r.abuse_score))
+        score, verdict, _ = _risk_heuristic(r.g, r.vt, r.otx, abuse=ab)
+        g = r.g
+        w.writerow(
+            [
+                r.ip,
+                g.country if g.ok else "",
+                g.city if g.ok else "",
+                g.as_raw if g.ok else "",
+                g.isp if g.ok else "",
+                r.vt.malicious if r.vt.ok else "",
+                r.vt.suspicious if r.vt.ok else "",
+                r.otx.pulse_count if r.otx.ok else "",
+                r.abuse_score if r.abuse_score is not None else "",
+                score,
+                verdict.split()[0] if verdict else "",
+                "1" if r.is_red else "0",
+            ]
+        )
+    return buf.getvalue()
         elif isinstance(item, BulkIpRow):
             lines.append(format_bulk_line_plain(item.ip, item.g, item.vt, item.otx))
     return lines
