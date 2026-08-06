@@ -427,19 +427,20 @@ def _ripe_asn_int(value: object) -> int | None:
 
 
 async def _ripe_as_holder(client: httpx.AsyncClient, asn: int) -> str:
-    try:
-        r = await client.get(
-            "https://stat.ripe.net/data/as-overview/data.json",
-            params={"resource": f"AS{asn}"},
-            timeout=18.0,
-        )
-        r.raise_for_status()
-        d = (r.json().get("data") or {})
-        if not isinstance(d, dict):
+    async with _RIPE_HOLDER_SEM:
+        try:
+            r = await client.get(
+                "https://stat.ripe.net/data/as-overview/data.json",
+                params={"resource": f"AS{asn}"},
+                timeout=18.0,
+            )
+            r.raise_for_status()
+            d = (r.json().get("data") or {})
+            if not isinstance(d, dict):
+                return ""
+            return str(d.get("holder") or "").strip()
+        except Exception:
             return ""
-        return str(d.get("holder") or "").strip()
-    except Exception:
-        return ""
 
 
 async def _ripe_asn_neighbours(
