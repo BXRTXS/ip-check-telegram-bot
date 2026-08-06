@@ -63,7 +63,7 @@ class RuntimeLimits:
             audit_ips_max=_env_int("IP_CHECK_AUDIT_IPS_MAX", 80, lo=5, hi=200),
             host_max_domains=_env_int("IP_CHECK_HOST_MAX_DOMAINS", 80, lo=5, hi=500),
             host_tg_show=_env_int("IP_CHECK_HOST_TG_SHOW", 20, lo=3, hi=50),
-            abuse_max_age_days=_env_int("IP_CHECK_ABUSE_MAX_AGE_DAYS", 365, lo=1, hi=365),
+            abuse_max_age_days=_env_int("IP_CHECK_ABUSE_MAX_AGE_DAYS", 30, lo=1, hi=365),
             abuse_report_pages_max=_env_int(
                 "IP_CHECK_ABUSE_REPORT_PAGES_MAX", 200, lo=1, hi=500
             ),
