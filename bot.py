@@ -55,7 +55,7 @@ from dump_analyzer import (
 from dump_ip_batch import DumpIpBatch, dump_check_keyboard, register_dump_ip_batch
 from zip_dump import ZipBundle, cleanup_bundle, extract_zip_pcaps, purge_old_bundles
 from domain_resolve import extract_domains, format_domain_resolve_html, resolve_domains
-from lookups import LookupFlags, extract_ipv4s, run_lookups_for_ips
+from lookups import LookupFlags, extract_ipv4s, report_ip_abuseipdb, run_lookups_for_ips
 from settings_store import SettingsStore, UserSettings
 
 log = logging.getLogger(__name__)
