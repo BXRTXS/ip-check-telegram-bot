@@ -56,8 +56,21 @@ def extract_zip_pcaps(data: bytes, *, owner_user_id: int, base_dir: Path) -> tup
     zip_path.write_bytes(data)
 
     entries: list[ZipPcapEntry] = []
+    max_total = _zip_max_bytes()
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
+            # Защита от zip bomb: сумма заявленных uncompressed размеров.
+            declared = 0
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                declared += max(0, int(info.file_size or 0))
+                if declared > max_total * 4:
+                    shutil.rmtree(work, ignore_errors=True)
+                    mb = max_total // (1024 * 1024)
+                    return None, f"ZIP: слишком большой uncompressed объём (лимит ~{mb * 4} МБ)"
+
+            written_total = 0
             for info in zf.infolist():
                 if info.is_dir():
                     continue
@@ -65,14 +78,24 @@ def extract_zip_pcaps(data: bytes, *, owner_user_id: int, base_dir: Path) -> tup
                 nl = name.lower().replace("\\", "/")
                 if not nl.endswith((".pcap", ".pcapng", ".cap")):
                     continue
-                if info.file_size > _zip_max_bytes():
+                if info.file_size > max_total:
                     continue
                 safe = Path(name).name
                 if not safe:
                     continue
                 dest = work / f"{len(entries):02d}_{safe}"
                 with zf.open(info) as src, dest.open("wb") as out:
-                    shutil.copyfileobj(src, out)
+                    while True:
+                        chunk = src.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        written_total += len(chunk)
+                        if written_total > max_total:
+                            dest.unlink(missing_ok=True)
+                            shutil.rmtree(work, ignore_errors=True)
+                            mb = max_total // (1024 * 1024)
+                            return None, f"ZIP: превышен лимит распаковки ({mb} МБ)"
+                        out.write(chunk)
                 if not is_pcap_magic(dest.read_bytes()):
                     dest.unlink(missing_ok=True)
                     continue
