@@ -125,8 +125,17 @@ def dump_check_keyboard(batch: DumpIpBatch) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    f"🔍 Проверить Src IP ({n})",
+                    f"🔍 Src IP ({n})",
                     callback_data=f"dchk:{batch.token}:src",
+                )
+            ]
+        )
+        n24 = len(slash24_top_ips(batch.src_ips))
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"📦 Src топ /24 ({n24} IP)",
+                    callback_data=f"dchk:{batch.token}:src24",
                 )
             ]
         )
@@ -135,8 +144,17 @@ def dump_check_keyboard(batch: DumpIpBatch) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    f"🔍 Проверить Dst IP ({n})",
+                    f"🔍 Dst IP ({n})",
                     callback_data=f"dchk:{batch.token}:dst",
+                )
+            ]
+        )
+        n24 = len(slash24_top_ips(batch.dst_ips))
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"📦 Dst топ /24 ({n24} IP)",
+                    callback_data=f"dchk:{batch.token}:dst24",
                 )
             ]
         )
