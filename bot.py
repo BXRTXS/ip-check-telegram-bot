@@ -356,10 +356,14 @@ def _settings_body() -> str:
     has_vt = bool(vt_api_key())
     has_otx = bool(otx_api_key())
     has_abuse = bool(abuseipdb_api_key())
+    from runtime_config import get_limits
+
+    win = get_limits().abuse_max_age_days
     return (
         "<b>Настройки</b> (для вашего аккаунта).\n"
         f"Ключ VT: {'есть' if has_vt else 'нет'} · OTX: {'есть' if has_otx else 'нет'} · "
         f"AbuseIPDB: {'есть' if has_abuse else 'нет'}\n"
+        f"Окно threat intel: <b>{win}</b> дн. (VT / OTX / AbuseIPDB).\n"
         "RIPEstat — только в детальном отчёте (prefix-overview, as-overview, asn-neighbours).\n"
         "Переключатели ниже."
     )
