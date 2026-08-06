@@ -267,12 +267,15 @@ def _risk_heuristic(
         reason_txt = " · ".join(reasons) if reasons else "явных сигналов мало"
 
     score = max(0, min(100, int(score)))
+    # Шкала 10 клеток пропорциональна оценке (раньше была фикс. длиной по tier).
+    filled = 0 if score == 0 else min(10, max(1, (score + 9) // 10))
     if score < 18:
-        verdict, bar = "✅ низкий риск", "🟩⬜⬜⬜⬜⬜⬜⬜⬜⬜"
+        verdict, on = "✅ низкий риск", "🟩"
     elif score < 45:
-        verdict, bar = "🟡 средний риск", "🟨🟨🟨⬜⬜⬜⬜⬜⬜"
+        verdict, on = "🟡 средний риск", "🟨"
     else:
-        verdict, bar = "🔴 повышенный риск", "🟥🟥🟥🟥🟥⬜⬜⬜⬜"
+        verdict, on = "🔴 повышенный риск", "🟥"
+    bar = on * filled + "⬜" * (10 - filled)
 
     foot = f"{bar}\n<i>Факторы:</i> {h(reason_txt)}"
     if threat == 0 and infra:
