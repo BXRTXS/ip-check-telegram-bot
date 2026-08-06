@@ -218,6 +218,31 @@ class LookupCacheStore:
                 n += 1
         return n
 
+    def _apply_fields(
+        self,
+        entry: CachedIpLookup,
+        *,
+        geo: GeoData | None = None,
+        vt: VTData | None = None,
+        otx: OTXData | None = None,
+        abuse: AbuseIPDBData | None = None,
+        ripe: RIPEstatData | None = None,
+        hosts: HostData | None = None,
+    ) -> None:
+        entry.cached_at = _utc_now_iso()
+        if geo is not None:
+            entry.geo = geo
+        if vt is not None:
+            entry.vt = vt
+        if otx is not None:
+            entry.otx = otx
+        if abuse is not None:
+            entry.abuse = abuse
+        if ripe is not None:
+            entry.ripe = ripe
+        if hosts is not None:
+            entry.hosts = hosts
+
     def merge(
         self,
         ip: str,
@@ -235,22 +260,52 @@ class LookupCacheStore:
             entry = _entry_from_dict(raw) if raw else None
             if entry is None or entry.is_expired():
                 entry = CachedIpLookup(cached_at=_utc_now_iso())
-            else:
-                entry.cached_at = _utc_now_iso()
-            if geo is not None:
-                entry.geo = geo
-            if vt is not None:
-                entry.vt = vt
-            if otx is not None:
-                entry.otx = otx
-            if abuse is not None:
-                entry.abuse = abuse
-            if ripe is not None:
-                entry.ripe = ripe
-            if hosts is not None:
-                entry.hosts = hosts
+            self._apply_fields(
+                entry, geo=geo, vt=vt, otx=otx, abuse=abuse, ripe=ripe, hosts=hosts
+            )
             ips[ip] = _entry_to_dict(entry)
             self._save_all(ips)
+
+    def merge_many(
+        self,
+        updates: dict[str, dict[str, Any]],
+    ) -> None:
+        """Одна запись на диск для пачки IP. Значения dict — поля geo/vt/otx/abuse/ripe/hosts."""
+        if not updates:
+            return
+        with self._lock:
+            ips = self._purge_expired_unlocked(self._load_all())
+            for ip, fields in updates.items():
+                if not isinstance(fields, dict):
+                    continue
+                raw = ips.get(ip, {})
+                entry = _entry_from_dict(raw) if raw else None
+                if entry is None or entry.is_expired():
+                    entry = CachedIpLookup(cached_at=_utc_now_iso())
+                self._apply_fields(
+                    entry,
+                    geo=fields.get("geo"),
+                    vt=fields.get("vt"),
+                    otx=fields.get("otx"),
+                    abuse=fields.get("abuse"),
+                    ripe=fields.get("ripe"),
+                    hosts=fields.get("hosts"),
+                )
+                ips[ip] = _entry_to_dict(entry)
+            self._save_all(ips)
+
+    def flush_all(self) -> int:
+        """Очистить кэш. Возвращает число удалённых записей."""
+        with self._lock:
+            n = len(self._load_all())
+            self._save_all({})
+            return n
+
+    def stats(self) -> dict[str, Any]:
+        with self._lock:
+            ips = self._load_all()
+            size = self._path.stat().st_size if self._path.is_file() else 0
+            return {"entries": len(ips), "bytes": size, "path": str(self._path)}
 
 
 def init_lookup_cache(path: Path) -> LookupCacheStore:
