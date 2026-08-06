@@ -486,7 +486,12 @@ def analyze_dump_bytes(data: bytes, filename: str, *, force_text: bool = False) 
             pass
 
 
-def _mitigator_html(rep: MitigatorReport, *, has_src_enrichment: bool = False) -> list[str]:
+def _mitigator_html(
+    rep: MitigatorReport,
+    *,
+    has_src_enrichment: bool = False,
+    has_dst_enrichment: bool = False,
+) -> list[str]:
     lines: list[str] = [
         "",
         "🛡 <b>Mitigator (Packet comments)</b>",
@@ -516,13 +521,24 @@ def _mitigator_html(rep: MitigatorReport, *, has_src_enrichment: bool = False) -
 
     if rep.dst_stats:
         lines.append("")
-        lines.append("<b>Dst IP — почему блокируют (топ)</b>")
-        for st in rep.dst_stats[:8]:
-            top_cm = st.top_countermeasures[0][0] if st.top_countermeasures else "?"
-            lines.append(
-                f"• <code>{h(st.ip)}</code> — {st.dropped}/{st.total} drop · "
-                f"<b>{h(top_cm)}</b>"
-            )
+        if has_dst_enrichment:
+            lines.append("<b>Dst IP — почему блокируют</b> <i>(pcap + репутация ниже)</i>")
+            for st in rep.dst_stats[:5]:
+                top_cm = st.top_countermeasures[0][0] if st.top_countermeasures else "?"
+                lines.append(
+                    f"• <code>{h(st.ip)}</code> — {st.dropped}/{st.total} drop · "
+                    f"<b>{h(top_cm)}</b>"
+                )
+            if len(rep.dst_stats) > 5:
+                lines.append(f"<i>… ещё {len(rep.dst_stats) - 5} dst — в блоке ниже</i>")
+        else:
+            lines.append("<b>Dst IP — почему блокируют (топ)</b>")
+            for st in rep.dst_stats[:8]:
+                top_cm = st.top_countermeasures[0][0] if st.top_countermeasures else "?"
+                lines.append(
+                    f"• <code>{h(st.ip)}</code> — {st.dropped}/{st.total} drop · "
+                    f"<b>{h(top_cm)}</b>"
+                )
 
     if rep.src_stats:
         lines.append("")
@@ -548,18 +564,26 @@ def _mitigator_html(rep: MitigatorReport, *, has_src_enrichment: bool = False) -
     return lines
 
 
-def _src_enrichment_html(enrich) -> list[str]:
+def _side_enrichment_html(enrich, *, title: str) -> list[str]:
     if not enrich or not enrich.html_lines:
         return []
     lines = [
         "",
-        "🔍 <b>Src IP — репутация</b> "
+        f"🔍 <b>{h(title)}</b> "
         f"(проверено <b>{enrich.checked}</b> из {enrich.total_unique} уникальных)",
     ]
     if enrich.truncated:
         lines.append("<i>Лимит IP — остальные только в pcap-статистике выше</i>")
     lines.extend(enrich.html_lines)
     return lines
+
+
+def _src_enrichment_html(enrich) -> list[str]:
+    return _side_enrichment_html(enrich, title="Src IP — репутация")
+
+
+def _dst_enrichment_html(enrich) -> list[str]:
+    return _side_enrichment_html(enrich, title="Dst IP — репутация")
 
 
 def _mitigator_txt(rep: MitigatorReport) -> list[str]:
