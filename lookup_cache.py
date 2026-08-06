@@ -212,9 +212,10 @@ class LookupCacheStore:
 
     def count_bulk_cached(self, ips: list[str], flags) -> int:
         n = 0
+        abuse = bool(getattr(flags, "abuse", False))
         for ip in ips:
             e = self.get_fresh(ip)
-            if e and e.covers(geo=flags.geo, vt=flags.vt, otx=flags.otx):
+            if e and e.covers(geo=flags.geo, vt=flags.vt, otx=flags.otx, abuse=abuse):
                 n += 1
         return n
 
