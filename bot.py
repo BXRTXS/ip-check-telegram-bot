@@ -1333,6 +1333,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_dump_check_ips, pattern=r"^dchk:"))
     app.add_handler(CallbackQueryHandler(on_detail_ip, pattern=r"^detail:"))
     app.add_handler(CallbackQueryHandler(on_nocache_last, pattern=r"^nocache:last$"))
+    app.add_handler(CallbackQueryHandler(on_abuse_report, pattern=r"^abuserpt:"))
     app.add_handler(CallbackQueryHandler(on_settings_toggle, pattern=r"^t:(geo|vt|otx|abuse|ripe)$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
