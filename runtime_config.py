@@ -86,7 +86,7 @@ EDITABLE_LIMIT_FIELDS: dict[str, str] = {
     "audit_ips_max": "IP в строке аудита",
     "host_max_domains": "Доменов за IP (лимит)",
     "host_tg_show": "Доменов в Telegram",
-    "abuse_max_age_days": "AbuseIPDB: окно (дней)",
+    "abuse_max_age_days": "Окно VT/OTX/Abuse (дней)",
     "dump_max_mb": "Дамп pcap: макс. МБ",
     "dump_timeout_sec": "Дамп: таймаут tshark (с)",
     "dump_zip_max_mb": "ZIP: макс. МБ",
