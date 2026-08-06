@@ -1,0 +1,31 @@
+# Установка (один раз):
+#   sudo cp /home/bxr/ip-check-telegram-bot/ip-check-telegram-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ip-check-telegram-bot
+#
+# Логи: sudo journalctl -u ip-check-telegram-bot -f
+#
+# Секреты: /home/bxr/ip-check-telegram-bot/ip_check_bot.env (chmod 600, владелец bxr)
+# Если Bot API через SOCKS падает на start_tls — в ip_check_bot.env:
+#   IP_CHECK_TG_NO_PROXY=1
+# (проверки ip-api/VT/OTX остаются через TG_SOCKS_PROXY).
+
+[Unit]
+Description=IP check Telegram bot (PTB + httpx SOCKS)
+After=network-online.target sing-box.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bxr
+Group=bxr
+WorkingDirectory=/home/bxr/ip-check-telegram-bot
+Environment=HOME=/home/bxr
+Environment=TG_SOCKS_PROXY=socks5://127.0.0.1:1080
+EnvironmentFile=-/home/bxr/ip-check-telegram-bot/ip_check_bot.env
+ExecStart=/home/bxr/ip-check-telegram-bot/.venv/bin/python /home/bxr/ip-check-telegram-bot/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

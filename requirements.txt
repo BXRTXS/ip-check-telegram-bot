@@ -1,0 +1,2 @@
+python-telegram-bot[socks]>=21.0
+httpx[socks]>=0.27.0

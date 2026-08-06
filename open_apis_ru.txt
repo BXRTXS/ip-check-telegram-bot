@@ -1,0 +1,38 @@
+Идеи открытых и полуоткрытых API для расширения бота (проверяйте ToS и лимиты перед продакшеном).
+
+УЖЕ В БОТЕ
+  • ip-api.com — гео, ASN, mobile/proxy/hosting (бесплатно, лимиты).
+  • VirusTotal v3 — /ip_addresses/{ip} (ключ).
+  • AlienVault OTX — pulses по IP (ключ).
+  • AbuseIPDB v2 — /check (ключ; только точечный отчёт, не массовый).
+  • RIPEstat — prefix-overview + as-overview + asn-neighbours по основному AS (только точечный отчёт).
+  • Домены за IP — PTR + VT resolutions + OTX passive DNS + AbuseIPDB domain/hostnames (только точечный; блок скрыт, если пусто).
+    Документация: https://stat.ripe.net/docs/data_api
+
+РЕПУТАЦИЯ / ABUSE (часто есть бесплатный тариф)
+  • GreyNoise Community API — «internet noise», сканеры (ключ community).
+  • URLhaus (abuse.ch) — в основном URL; для IP ограниченно.
+  • Talos Intelligence (Cisco) — часть данных через веб/API с регистрацией.
+
+ГЕО И СЕТЬ (англоязычные доки, но данные по РФ обычно есть)
+  • ipinfo.io — гео, ASN, компактный JSON (бесплатный лимит с токеном).
+  • ipwho.is / ip-api.io — аналоги с free tier.
+  • ipregistry.co — гео + risk-флаги, кредиты на free.
+  • MaxMind GeoLite2 — локальная база MMDB, без онлайн-запроса на каждый IP (лицензия).
+
+ASN / ИНФРАСТРУКТУРА (открыто, доки на англ.)
+  • Другие вызовы RIPEstat (as-path и т.д.): https://stat.ripe.net/docs/data_api
+  • Team Cymru IP-ASN mapping — по DNS или HTTP, без ключа.
+
+ПОПУЛЯРНО В РФ (интерфейс на русском; API — читать условия на сайте)
+  • 2ip.ru / 2ip.io — гео и сервисы вокруг IP; у коммерческих продуктов бывает API с лимитами.
+  • «Мой IP»-класс сервисов — чаще без стабильного публичного API для автоматизации.
+
+RISK / FRAUD (англ., платные полные отчёты)
+  • IPQualityScore (IPQS) — fraud score, VPN/proxy (free tier очень ограничен).
+  • Scamalytics — fraud score (часто платный API).
+  • Shodan / Censys — что видно на IP снаружи (ключи, лимиты).
+
+ИТОГ ДЛЯ РАСШИРЕНИЯ ОТЧЁТА
+  Самый заметный выигрыш при скромном числе ключей: AbuseIPDB + GreyNoise + RIPEstat
+  (всё можно держать за тем же TG_SOCKS_PROXY, что и текущие запросы).

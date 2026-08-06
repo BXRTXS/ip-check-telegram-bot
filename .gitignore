@@ -1,0 +1,32 @@
+# Secrets — never commit
+ip_check_bot.env
+*.env
+!*.env.example
+secrets/**
+!secrets/keys.example.json
+keys.json
+**/keys.json
+!**/keys.example.json
+IP_CHECK_KEYS.json
+
+# Runtime / local data
+data/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Temp
+*.tmp
+*.log
