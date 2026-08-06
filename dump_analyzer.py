@@ -43,6 +43,7 @@ class DumpAnalysis:
     note: str | None = None
     mitigator: MitigatorReport | None = None
     src_enrichment: DumpSrcEnrichment | None = None
+    dst_enrichment: DumpSrcEnrichment | None = None
 
 
 def _tshark_bin() -> str:
